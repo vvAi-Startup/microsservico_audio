@@ -1,1 +1,48 @@
+venv/# Ambiente virtual
 venv/
+.env/
+
+# Cache e arquivos temporários
+__pycache__/
+*.py[cod]
+*.log
+*.pot
+*.pyc
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Compilados C/C++
+*.so
+*.o
+*.out
+
+# Arquivos de teste
+coverage/
+htmlcov/
+.tox/
+.pytest_cache/
+
+# Arquivos de builds
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Arquivos do sistema operacional
+*.swp
+*.swo
+
+# Arquivos do FastAPI se estiver usando reload automático
+*.db
+
+# Audios processados temporariamente (opcional)
+uploads/
+processed_audio/
