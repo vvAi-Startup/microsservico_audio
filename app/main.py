@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes.audio_router import router as audio_router
+from app.routes.denoise_router import router as audio_router
 
 app = FastAPI(
     title="Microsserviço de Supressão de Ruído",
