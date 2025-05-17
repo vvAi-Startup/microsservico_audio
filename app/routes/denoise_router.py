@@ -4,7 +4,6 @@ import io
 import torchaudio
 from app.services.denoiser_service import denoise_waveform, SAMPLE_RATE
 
-torchaudio.set_audio_backend("soundfile")
 
 router = APIRouter()
 
@@ -16,6 +15,13 @@ async def process_audio(
     chunk_number: int = Form(...),
     filename: str = Form(...)
 ):
+    
+    print("Campos recebidos:")
+    print(f"audio_file: {audio_file}")
+    print(f"session_id: {session_id}")
+    print(f"user_id: {user_id}")
+    print(f"chunk_number: {chunk_number}")
+    print(f"filename: {filename}")
     
     if audio_file.content_type != "audio/wav":
         raise HTTPException(status_code=400, detail="Arquivo deve ser do tipo audio/wav")

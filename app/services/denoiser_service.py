@@ -19,9 +19,6 @@ model = UNetDenoiser().to(DEVICE)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.eval()
 
-
-import torch
-import torchaudio
 import torch.nn.functional as F
 
 N_FFT = 512
