@@ -1,7 +1,8 @@
 venv/# Ambiente virtual
 venv/
 .env/
-
+.venv/
+.conda/
 # Cache e arquivos temporários
 __pycache__/
 *.py[cod]
