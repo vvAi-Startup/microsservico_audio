@@ -64,11 +64,13 @@ async def process_audio(
                 media_type="audio/wav",
                 filename=f"denoised_{audio_file.filename}",
                 headers={
-                "X-Session-ID": session_id,
-                            "X-User-ID": user_id,
-                            "X-Chunk-Number": str(chunk_number),
-                            "X-Original-Filename": filename
-            })
+                    "X-Session-ID": session_id,
+                    "X-User-ID": user_id,
+                    "X-Chunk-Number": str(chunk_number),
+                    "X-Original-Filename": filename,
+                    "Content-Disposition": f"attachment; filename=denoised_{audio_file.filename}"
+                }
+            )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro no processamento do áudio: {str(e)}")
 

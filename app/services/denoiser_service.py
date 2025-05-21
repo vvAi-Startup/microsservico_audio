@@ -19,7 +19,7 @@ class AudioService:
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = UNetDenoiser().to(self.device)
-        self.output_dir = os.path.join(os.path.expanduser("~"), "denoiser_output")
+        self.output_dir = os.path.join(os.path.dirname(__file__), "..", "audio_files")
         os.makedirs(self.output_dir, exist_ok=True)
         
         # Carregar modelo
@@ -50,10 +50,10 @@ class AudioService:
             process_dir = os.path.join(self.output_dir, f"process_{timestamp}")
             os.makedirs(process_dir, exist_ok=True)
             
-            # Copiar arquivo original para o diretório
-            original_filename = os.path.basename(input_file)
-            original_copy_path = os.path.join(process_dir, "original_" + original_filename)
-            shutil.copy2(input_file, original_copy_path)
+            # Remover a cópia do arquivo original
+            # original_filename = os.path.basename(input_file)
+            # original_copy_path = os.path.join(process_dir, "original_" + original_filename)
+            # shutil.copy2(input_file, original_copy_path)
             
             # Carregar áudio
             audio, sr = torchaudio.load(input_file)
@@ -161,18 +161,18 @@ class AudioService:
             processed_audio = processed_audio / (torch.max(torch.abs(processed_audio)) + 1e-8)
             
             # Salvar resultado
-            output_file = os.path.join(process_dir, "denoised_" + original_filename)
+            output_file = os.path.join(process_dir, "denoised_" + os.path.basename(input_file))
             torchaudio.save(output_file, processed_audio, SAMPLE_RATE)
             
             # Criar arquivo de informações
-            info_file = os.path.join(process_dir, "info.txt")
-            with open(info_file, "w") as f:
-                f.write(f"Processamento realizado em: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"Arquivo original: {input_file}\n")
-                f.write(f"Duração: {audio_length / SAMPLE_RATE:.2f} segundos\n")
-                f.write(f"Taxa de amostragem: {SAMPLE_RATE} Hz\n")
-                f.write(f"Dispositivo usado: {self.device}\n")
-                f.write(f"Intensidade do processamento: {intensity:.2f}\n")
+            # info_file = os.path.join(process_dir, "info.txt")
+            # with open(info_file, "w") as f:
+            #     f.write(f"Processamento realizado em: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            #     f.write(f"Arquivo original: {input_file}\n")
+            #     f.write(f"Duração: {audio_length / SAMPLE_RATE:.2f} segundos\n")
+            #     f.write(f"Taxa de amostragem: {SAMPLE_RATE} Hz\n")
+            #     f.write(f"Dispositivo usado: {self.device}\n")
+            #     f.write(f"Intensidade do processamento: {intensity:.2f}\n")
             
             return output_file, process_dir
             
