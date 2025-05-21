@@ -2,64 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# # class UNetDenoiser(nn.Module):
-#     def __init__(self, input_channels=1, output_channels=1, features=[16, 32, 64, 128]):
-#         super(UNetDenoiser, self).__init__()
-        
-#         # Encoder
-#         self.encoders = nn.ModuleList()
-#         for feature in features:
-#             self.encoders.append(self.conv_block(input_channels, feature))
-#             input_channels = feature
-        
-#         # Bottleneck
-#         self.bottleneck = self.conv_block(features[-1], features[-1] * 2)
-        
-#         # Decoder
-#         self.decoders = nn.ModuleList()
-#         rev_features = features[::-1]
-#         for feature in rev_features:
-#             self.decoders.append(
-#                 nn.ConvTranspose2d(feature * 2, feature, kernel_size=2, stride=2)
-#             )
-#             self.decoders.append(self.conv_block(feature * 2, feature))
-        
-#         # Final conv
-#         self.final_conv = nn.Conv2d(features[0], output_channels, kernel_size=1)
-    
-#     def conv_block(self, in_channels, out_channels):
-#         return nn.Sequential(
-#             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-    
-#     def forward(self, x):
-#         skip_connections = []
-        
-#         for encoder in self.encoders:
-#             x = encoder(x)
-#             skip_connections.append(x)
-#             x = F.max_pool2d(x, kernel_size=2, stride=2)
-        
-#         x = self.bottleneck(x)
-#         skip_connections = skip_connections[::-1]
-        
-#         for idx in range(0, len(self.decoders), 2):
-#             x = self.decoders[idx](x)  # ConvTranspose2d (upsample)
-#             skip_connection = skip_connections[idx // 2]
-            
-#             if x.shape != skip_connection.shape:
-#                 x = F.interpolate(x, size=skip_connection.shape[2:])
-            
-#             x = torch.cat((skip_connection, x), dim=1)
-#             x = self.decoders[idx + 1](x)  # conv block
-        
-#         return torch.sigmoid(self.final_conv(x))
-
 class UNetDenoiser(nn.Module):
     def __init__(self):
         super(UNetDenoiser, self).__init__()

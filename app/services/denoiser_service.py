@@ -1,168 +1,183 @@
-import io
+import os
 import torch
 import torchaudio
-import os
+import numpy as np
+from typing import Tuple, Optional
+import datetime
+import shutil
 
 N_FFT = 512
 HOP_LENGTH = 128
 SAMPLE_RATE = 16000
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Importar seu modelo aqui (ajuste conforme seu projeto)
+# Importar a definição do modelo do arquivo de treinamento
 from app.model.model import UNetDenoiser
+from app.utils.reconstruct_audio import reconstruct_audio
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # isso vai para 'app/'
-MODEL_PATH = os.path.join(BASE_DIR, "model", "best_denoiser_model.pth")
-
-# Inicializa e carrega o modelo uma vez
-model = UNetDenoiser().to(DEVICE)
-model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
-model.eval()
-
-import torch.nn.functional as F
-
-N_FFT = 512
-HOP_LENGTH = 128
-SAMPLE_RATE = 16000
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Importar seu modelo UNet
-from app.model.model import UNetDenoiser
-
-# Inicializa e carrega o modelo (ajuste o caminho se necessário)
-model = UNetDenoiser().to(DEVICE)
-model.load_state_dict(torch.load("app/model/best_denoiser_model.pth", map_location=DEVICE))
-model.eval()
+class AudioService:
+    def __init__(self):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = UNetDenoiser().to(self.device)
+        self.output_dir = os.path.join(os.path.expanduser("~"), "denoiser_output")
+        os.makedirs(self.output_dir, exist_ok=True)
+        
+        # Carregar modelo
+        try:
+            model_path = os.path.join(os.path.dirname(__file__), "..", "model", "best_denoiser_model.pth")
+            self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+            self.model.eval()
+            print("Modelo carregado com sucesso!")
+        except Exception as e:
+            print(f"Erro ao carregar o modelo: {e}")
+            raise
 
 
-def reconstruct_audio(noisy_spec, mask, hop_length=HOP_LENGTH, original_length=None):
-    # noisy_spec['magnitude']: Tensor 2D [freq_bins, time_frames]
-    magnitude = torch.exp(noisy_spec['magnitude']) - 1
-
-    # mask: Tensor 2D [freq_bins, time_frames]
-    enhanced_magnitude = magnitude * mask
-
-    # Reconstruir espectrograma complexo
-    enhanced_stft = enhanced_magnitude * torch.exp(1j * noisy_spec['phase'])
-
-    window = torch.hann_window(N_FFT, device=enhanced_stft.device)
-    length = original_length
-
-    audio = torch.istft(
-        enhanced_stft,
-        n_fft=N_FFT,
-        hop_length=hop_length,
-        window=window,
-        length=length
-    )
-    return audio
-
-
-def denoise_waveform(waveform, sr):
-    # ### 1) Converter para mono
-    if waveform.dim() == 2 and waveform.size(0) > 1:
-        waveform = torch.mean(waveform, dim=0, keepdim=True)  # [1, samples]
-
-    # ### 2) Reamostrar se necessário
-    if sr != SAMPLE_RATE:
-        waveform = torchaudio.transforms.Resample(sr, SAMPLE_RATE)(waveform)
-    waveform = waveform.to(DEVICE)  # [1, samples]
-
-    # ### 3) STFT
-    # Passe 1D para stft: waveform[0]
-    window = torch.hann_window(N_FFT).to(DEVICE)
-    stft = torch.stft(
-        waveform[0],
-        n_fft=N_FFT,
-        hop_length=HOP_LENGTH,
-        window=window,
-        return_complex=True
-    )  # shape [freq_bins, time_frames]
-
-    magnitude = torch.log1p(torch.abs(stft))  # [freq_bins, time_frames]
-    phase     = torch.angle(stft)              # [freq_bins, time_frames]
-
-    # ### 4) Preparar input para o modelo (4D)
-    noisy_mag = magnitude.unsqueeze(0).unsqueeze(0)  # [1, 1, freq, time]
-    print("[DEBUG] noisy_mag shape:", noisy_mag.shape)
-
-    # ### 5) Inferência
-    with torch.no_grad():
-        mask = model(noisy_mag)  # [1, 1, freq, time]
-    print("[DEBUG] mask shape:", mask.shape,
-          "min/max/mean:", mask.min().item(), mask.max().item(), mask.mean().item())
-
-    # ### 6) Squeeze para 2D
-    mask_2d = mask.squeeze(0).squeeze(0)  # [freq, time]
-
-    # ### 7) Reconstruir áudio usando ISTFT
-    denoised = reconstruct_audio(
-        {'magnitude': magnitude, 'phase': phase},
-        mask_2d,
-        hop_length=HOP_LENGTH,
-        original_length=waveform.size(1)
-    )
-
-    return denoised.cpu()
-
-
-
-
-# Exemplo de uso: (suponha que você carregou um waveform e sample rate)
-# waveform, sr = torchaudio.load("seuarquivo.wav")
-# denoised = denoise_waveform(waveform[0], sr)  # waveform[0] para mono
-
-
-
-# def reconstruct_audio(noisy_spec, mask, hop_length=HOP_LENGTH):
-#     magnitude = torch.exp(noisy_spec['magnitude']) - 1  # Reverter log1p
-#     enhanced_magnitude = magnitude * mask.squeeze(1)  # [1, freq, time]
-
-#     # Se necessário, remova dimensões extras
-#     enhanced_magnitude = enhanced_magnitude.squeeze(0)  # [freq, time]
-#     phase = noisy_spec['phase'].squeeze(0)  # [freq, time]
-
-#     enhanced_stft = enhanced_magnitude * torch.exp(1j * phase)  # [freq, time]
-
-#     audio = torch.istft(
-#         enhanced_stft,
-#         n_fft=N_FFT,
-#         hop_length=hop_length,
-#         window=torch.hann_window(N_FFT, device=enhanced_stft.device),
-#         length=None
-#     )
-#     return audio
-
-# def denoise_waveform(waveform, sr):
-#     if sr != SAMPLE_RATE:
-#         waveform = torchaudio.transforms.Resample(sr, SAMPLE_RATE)(waveform)
-
-#     if waveform.shape[0] > 1:
-#         waveform = torch.mean(waveform, dim=0, keepdim=True)  # [1, samples]
-
-#     waveform = waveform.to(DEVICE)
-
-#     window = torch.hann_window(N_FFT).to(DEVICE)
-#     stft = torch.stft(
-#         waveform, n_fft=N_FFT, hop_length=HOP_LENGTH,
-#         window=window, return_complex=True
-#     )
-
-#     magnitude = torch.log1p(torch.abs(stft))  # [1, freq, time]
-#     phase = torch.angle(stft)
-
-#     noisy_mag = magnitude.unsqueeze(0)  # [1, 1, freq, time]
-
-#     print(">>> [DEBUG] waveform:", waveform.shape)
-#     print(">>> [DEBUG] magnitude:", magnitude.shape)
-#     print(">>> [DEBUG] noisy_mag (input to model):", noisy_mag.shape)
-
-#     with torch.no_grad():
-#         mask = model(noisy_mag)
-
-#     print(">>> [DEBUG] mask (output from model):", mask.shape)
-
-#     denoised_audio = reconstruct_audio({'magnitude': magnitude, 'phase': phase}, mask, hop_length=HOP_LENGTH)
-#     return denoised_audio.cpu()
-
-
+    async def process_audio(self, input_file: str, intensity: float = 1.0) -> Tuple[str, str]:
+        """
+        Processa um arquivo de áudio para remover ruído.
+        
+        Args:
+            input_file: Caminho do arquivo de entrada
+            intensity: Intensidade do processamento (0.0 a 1.0)
+            
+        Returns:
+            Tuple[str, str]: (caminho do arquivo processado, diretório do processo)
+        """
+        try:
+            # Criar diretório para o processamento atual
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            process_dir = os.path.join(self.output_dir, f"process_{timestamp}")
+            os.makedirs(process_dir, exist_ok=True)
+            
+            # Copiar arquivo original para o diretório
+            original_filename = os.path.basename(input_file)
+            original_copy_path = os.path.join(process_dir, "original_" + original_filename)
+            shutil.copy2(input_file, original_copy_path)
+            
+            # Carregar áudio
+            audio, sr = torchaudio.load(input_file)
+            
+            # Converter para mono se estiver em estéreo
+            if audio.shape[0] > 1:
+                audio = torch.mean(audio, dim=0, keepdim=True)
+            
+            # Reamostrar se necessário
+            if sr != SAMPLE_RATE:
+                audio = torchaudio.transforms.Resample(sr, SAMPLE_RATE)(audio)
+            
+            # Normalizar
+            audio = audio / (torch.max(torch.abs(audio)) + 1e-8)
+            
+            # Calcular STFT
+            stft = torch.stft(
+                audio.squeeze(0), 
+                n_fft=N_FFT, 
+                hop_length=HOP_LENGTH, 
+                window=torch.hann_window(N_FFT), 
+                return_complex=True
+            )
+            
+            # Converter para magnitude e fase
+            mag = torch.abs(stft)
+            phase = torch.angle(stft)
+            
+            # Aplicar escala logarítmica à magnitude
+            log_mag = torch.log1p(mag)
+            
+            # Processar em lotes para evitar problemas de memória
+            batch_size = 10  # segundos
+            samples_per_batch = batch_size * SAMPLE_RATE
+            hop_samples = int(samples_per_batch * 0.5)  # 50% de sobreposição
+            
+            audio_length = audio.shape[1]
+            num_batches = max(1, int(np.ceil(audio_length / hop_samples)))
+            
+            # Preparar áudio processado
+            processed_audio = torch.zeros_like(audio)
+            overlap_count = torch.zeros_like(audio)
+            
+            for i in range(num_batches):
+                start_sample = i * hop_samples
+                end_sample = min(start_sample + samples_per_batch, audio_length)
+                
+                # Extrair segmento
+                segment = audio[:, start_sample:end_sample]
+                
+                # Calcular STFT do segmento
+                segment_stft = torch.stft(
+                    segment.squeeze(0), 
+                    n_fft=N_FFT, 
+                    hop_length=HOP_LENGTH, 
+                    window=torch.hann_window(N_FFT), 
+                    return_complex=True
+                )
+                
+                segment_mag = torch.abs(segment_stft)
+                segment_phase = torch.angle(segment_stft)
+                segment_log_mag = torch.log1p(segment_mag)
+                
+                # Preparar para o modelo
+                noisy_spec = segment_log_mag.unsqueeze(0).unsqueeze(0).to(self.device)
+                
+                # Aplicar modelo
+                with torch.no_grad():
+                    mask = self.model(noisy_spec)
+                
+                # Aplicar intensidade ao mask
+                if intensity < 1.0:
+                    unity_mask = torch.ones_like(mask)
+                    mask = intensity * mask + (1 - intensity) * unity_mask
+                
+                # Reconstruir áudio
+                denoised_segment = reconstruct_audio(
+                    {'magnitude': noisy_spec.squeeze(1), 'phase': segment_phase.unsqueeze(0).to(self.device)},
+                    mask,
+                    HOP_LENGTH
+                )
+                
+                # Garantir que denoised_segment tenha a forma correta
+                if len(denoised_segment.shape) == 1:
+                    denoised_segment = denoised_segment.unsqueeze(0)
+                
+                # Verificar se o comprimento do segmento é compatível
+                if denoised_segment.shape[0] != 1:
+                    denoised_segment = denoised_segment.unsqueeze(0)
+                
+                # Adicionar ao áudio processado com sobreposição
+                segment_length = denoised_segment.shape[1]
+                if start_sample + segment_length <= processed_audio.shape[1]:
+                    processed_audio[0, start_sample:start_sample + segment_length] += denoised_segment[0]
+                    overlap_count[0, start_sample:start_sample + segment_length] += 1
+                else:
+                    available_length = processed_audio.shape[1] - start_sample
+                    processed_audio[0, start_sample:] += denoised_segment[0, :available_length]
+                    overlap_count[0, start_sample:] += 1
+            
+            # Normalizar pela contagem de sobreposição
+            processed_audio = processed_audio / (overlap_count + 1e-8)
+            
+            # Normalizar amplitude
+            processed_audio = processed_audio / (torch.max(torch.abs(processed_audio)) + 1e-8)
+            
+            # Salvar resultado
+            output_file = os.path.join(process_dir, "denoised_" + original_filename)
+            torchaudio.save(output_file, processed_audio, SAMPLE_RATE)
+            
+            # Criar arquivo de informações
+            info_file = os.path.join(process_dir, "info.txt")
+            with open(info_file, "w") as f:
+                f.write(f"Processamento realizado em: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Arquivo original: {input_file}\n")
+                f.write(f"Duração: {audio_length / SAMPLE_RATE:.2f} segundos\n")
+                f.write(f"Taxa de amostragem: {SAMPLE_RATE} Hz\n")
+                f.write(f"Dispositivo usado: {self.device}\n")
+                f.write(f"Intensidade do processamento: {intensity:.2f}\n")
+            
+            return output_file, process_dir
+            
+        except Exception as e:
+            print(f"Erro no processamento: {e}")
+            import traceback
+            traceback.print_exc()
+            raise 
