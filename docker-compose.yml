@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  audio_service:
+    build: .
+    container_name: microsservico_audio
+    ports:
+      - "8000:8000"
+    environment:
+      - IP_SERVIDOR=10.67.57.147:5000
+    volumes:
+      - ./app:/app/app
+    networks:
+      - audio_network
+    restart: unless-stopped
+
+networks:
+  audio_network:
+    driver: bridge
